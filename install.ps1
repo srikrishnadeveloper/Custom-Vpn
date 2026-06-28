@@ -3,7 +3,8 @@ param(
     [string]$NordPass = "",
     [string]$WifiSSID = "SSN",
     [switch]$Silent,
-    [switch]$SkipOpenVPN
+    [switch]$SkipOpenVPN,
+    [switch]$Uninstall
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -46,18 +47,67 @@ function Write-LogError {
     Write-ErrorMsg $Message
 }
 
+function Remove-Task {
+    param([string]$Name)
+    schtasks /delete /f /tn "\$Name" 2>$null
+}
+
+# Uninstall mode
+if ($Uninstall) {
+    Write-ProgressMsg "Uninstalling NordVPN auto-connect..."
+
+    $taskNames = @(
+        "NordVPN-Ethernet-Connect",
+        "NordVPN-WiFi-Connect",
+        "NordVPN-Ethernet-Disconnect",
+        "NordVPN-WiFi-Disconnect",
+        "NordVPN-Watchdog"
+    )
+    foreach ($tn in $taskNames) {
+        Remove-Task -Name $tn
+    }
+    Write-Success "Scheduled tasks removed."
+
+    if (Test-Path $NordDir) {
+        try {
+            Remove-Item -Path $NordDir -Recurse -Force
+            Write-Success "Removed $NordDir"
+        } catch {
+            Write-LogError "Failed to remove $NordDir : $_"
+        }
+    } else {
+        Write-ProgressMsg "$NordDir does not exist."
+    }
+
+    $nordCmdDest = "C:\Windows\nord.cmd"
+    if (Test-Path $nordCmdDest) {
+        try {
+            Remove-Item -Path $nordCmdDest -Force
+            Write-Success "Removed $nordCmdDest"
+        } catch {
+            Write-LogError "Failed to remove $nordCmdDest : $_"
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Uninstall complete." -ForegroundColor Green
+    Write-Host "Note: IPv6 settings were not reverted. Re-enable via:" -ForegroundColor Yellow
+    Write-Host "  Get-NetAdapterBinding -ComponentID ms_tcpip6 | Enable-NetAdapterBinding -ComponentID ms_tcpip6 -Confirm:`$false" -ForegroundColor White
+    exit 0
+}
+
 # Step 1: Check Admin
 Write-ProgressMsg "Checking administrator privileges..."
 $IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $IsAdmin) {
     Write-WarningMsg "Not running as administrator. Restarting with elevated rights..."
-    $args = @()
-    if ($NordUser) { $args += "-NordUser `"$NordUser`"" }
-    if ($NordPass) { $args += "-NordPass `"$NordPass`"" }
-    if ($WifiSSID -ne "SSN") { $args += "-WifiSSID `"$WifiSSID`"" }
-    if ($Silent) { $args += "-Silent" }
-    if ($SkipOpenVPN) { $args += "-SkipOpenVPN" }
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" $($args -join ' ')"
+    $elevatedArgs = @()
+    if ($NordUser) { $elevatedArgs += "-NordUser `"$NordUser`"" }
+    if ($NordPass) { $elevatedArgs += "-NordPass `"$NordPass`"" }
+    if ($WifiSSID -ne "SSN") { $elevatedArgs += "-WifiSSID `"$WifiSSID`"" }
+    if ($Silent) { $elevatedArgs += "-Silent" }
+    if ($SkipOpenVPN) { $elevatedArgs += "-SkipOpenVPN" }
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" $($elevatedArgs -join ' ')"
     exit 0
 }
 Write-Success "Administrator privileges confirmed."
@@ -102,17 +152,18 @@ try {
     Write-LogError "Failed to create directories: $_"
 }
 
-# Step 4: Copy .ovpn files
+# Step 4: Copy .ovpn files from scripts\*.ovpn
 Write-ProgressMsg "Copying OpenVPN configuration files..."
 try {
-    $ovpnFiles = Get-ChildItem -Path $ScriptDir -Filter "*.ovpn" -File
+    $ovpnSourceDir = Join-Path $ScriptDir "scripts"
+    $ovpnFiles = Get-ChildItem -Path $ovpnSourceDir -Filter "*.ovpn" -File -ErrorAction SilentlyContinue
     if ($ovpnFiles.Count -gt 0) {
         foreach ($file in $ovpnFiles) {
             Copy-Item -Path $file.FullName -Destination "$ConfigDir\$($file.Name)" -Force
         }
         Write-Success "Copied $($ovpnFiles.Count) .ovpn configuration files."
     } else {
-        Write-WarningMsg "No .ovpn files found in the installer directory."
+        Write-WarningMsg "No .ovpn files found in $ovpnSourceDir"
     }
 } catch {
     Write-LogError "Failed to copy .ovpn files: $_"
@@ -121,7 +172,7 @@ try {
 # Step 5: Copy scripts
 Write-ProgressMsg "Copying PowerShell and batch scripts..."
 try {
-    $nordScript = Get-ChildItem -Path $ScriptDir -Filter "nord.ps1" -File
+    $nordScript = Get-ChildItem -Path (Join-Path $ScriptDir "scripts") -Filter "nord.ps1" -File -ErrorAction SilentlyContinue
     if ($nordScript) {
         Copy-Item -Path $nordScript.FullName -Destination "$NordDir\nord.ps1" -Force
         Write-Success "Copied nord.ps1"
@@ -129,7 +180,7 @@ try {
         Write-WarningMsg "nord.ps1 not found in installer directory."
     }
 
-    $cmdScripts = Get-ChildItem -Path $ScriptDir -Filter "*.cmd" -File
+    $cmdScripts = Get-ChildItem -Path (Join-Path $ScriptDir "scripts") -Filter "*.cmd" -File -ErrorAction SilentlyContinue
     if ($cmdScripts.Count -gt 0) {
         foreach ($file in $cmdScripts) {
             Copy-Item -Path $file.FullName -Destination "$ScriptsDir\$($file.Name)" -Force
@@ -236,7 +287,7 @@ try {
 
 # Step 10: Register tasks
 Write-ProgressMsg "Registering scheduled tasks..."
-$registerTasksScript = Join-Path $ScriptDir "Register-Tasks.ps1"
+$registerTasksScript = Join-Path (Join-Path $ScriptDir "scripts") "Register-Tasks.ps1"
 try {
     if (Test-Path $registerTasksScript) {
         & $registerTasksScript
@@ -254,7 +305,7 @@ try {
 
 # Step 11: CLI wrapper
 Write-ProgressMsg "Installing CLI wrapper..."
-$nordCmdSource = Join-Path $ScriptDir "nord.cmd"
+$nordCmdSource = Join-Path (Join-Path $ScriptDir "scripts") "nord.cmd"
 $nordCmdDest = "C:\Windows\nord.cmd"
 if ($IsAdmin) {
     try {

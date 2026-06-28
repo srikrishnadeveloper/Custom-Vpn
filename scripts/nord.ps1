@@ -1,7 +1,8 @@
 ﻿param(
     [string]$Action = "us",
     [switch]$TCP,
-    [int]$Timeout = 45
+    [int]$Timeout = 45,
+    [switch]$JSON
 )
 
 $ErrorActionPreference = "Stop"
@@ -105,8 +106,17 @@ function Status-VPN {
     $proc = Get-Process -Name "openvpn" -ErrorAction SilentlyContinue
     if ($proc) {
         $ip = Get-IP
-        if ($ip) { Write-Output "Connected ($ip)" } else { Write-Output "Connected" }
-    } else { Write-Output "Disconnected" }
+        if ($JSON) {
+            $result = @{ connected = $true; ip = if ($ip) { $ip } else { $null } }
+            Write-Output ($result | ConvertTo-Json -Compress)
+        } else {
+            if ($ip) { Write-Output "Connected ($ip)" } else { Write-Output "Connected" }
+        }
+    } else {
+        if ($JSON) {
+            Write-Output (@{ connected = $false; ip = $null } | ConvertTo-Json -Compress)
+        } else { Write-Output "Disconnected" }
+    }
 }
 
 $lastServerFile = "$homeDir\.nordvpn\.nord.last"
@@ -129,10 +139,11 @@ function Load-LastServer {
 function Health-Check {
     $passCount = 0
     $failCount = 0
+    if ($JSON) { $checks = @() } else { $checks = $null }
 
     $proc = Get-Process -Name "openvpn" -ErrorAction SilentlyContinue
-    if ($proc) { Write-Output "[PASS] OpenVPN process is running"; $passCount++ }
-    else { Write-Output "[FAIL] OpenVPN process is not running"; $failCount++ }
+    if ($proc) { if ($JSON) { $checks += @{ name = "OpenVPN process"; status = "pass" } } else { Write-Output "[PASS] OpenVPN process is running" }; $passCount++ }
+    else { if ($JSON) { $checks += @{ name = "OpenVPN process"; status = "fail" } } else { Write-Output "[FAIL] OpenVPN process is not running" }; $failCount++ }
 
     $internetOk = $false
     $testSites = @("https://api.ipify.org", "https://www.google.com", "https://www.cloudflare.com")
@@ -149,8 +160,8 @@ function Health-Check {
             } catch {}
         }
     }
-    if ($internetOk) { Write-Output "[PASS] Internet is reachable"; $passCount++ }
-    else { Write-Output "[FAIL] Internet is not reachable"; $failCount++ }
+    if ($internetOk) { if ($JSON) { $checks += @{ name = "Internet"; status = "pass" } } else { Write-Output "[PASS] Internet is reachable" }; $passCount++ }
+    else { if ($JSON) { $checks += @{ name = "Internet"; status = "fail" } } else { Write-Output "[FAIL] Internet is not reachable" }; $failCount++ }
 
     $dnsOk = $false
     try {
@@ -162,8 +173,8 @@ function Health-Check {
             }
         }
     } catch {}
-    if ($dnsOk) { Write-Output "[PASS] DNS using NordVPN server 103.86.96.100"; $passCount++ }
-    else { Write-Output "[FAIL] DNS not using NordVPN server 103.86.96.100 on TAP adapter"; $failCount++ }
+    if ($dnsOk) { if ($JSON) { $checks += @{ name = "DNS"; status = "pass" } } else { Write-Output "[PASS] DNS using NordVPN server 103.86.96.100" }; $passCount++ }
+    else { if ($JSON) { $checks += @{ name = "DNS"; status = "fail" } } else { Write-Output "[FAIL] DNS not using NordVPN server 103.86.96.100 on TAP adapter" }; $failCount++ }
 
     $ipv6Ok = $true
     try {
@@ -175,8 +186,8 @@ function Health-Check {
             }
         }
     } catch {}
-    if ($ipv6Ok) { Write-Output "[PASS] IPv6 disabled on Ethernet/WiFi adapters"; $passCount++ }
-    else { Write-Output "[FAIL] IPv6 is enabled on one or more Ethernet/WiFi adapters"; $failCount++ }
+    if ($ipv6Ok) { if ($JSON) { $checks += @{ name = "IPv6"; status = "pass" } } else { Write-Output "[PASS] IPv6 disabled on Ethernet/WiFi adapters" }; $passCount++ }
+    else { if ($JSON) { $checks += @{ name = "IPv6"; status = "fail" } } else { Write-Output "[FAIL] IPv6 is enabled on one or more Ethernet/WiFi adapters" }; $failCount++ }
 
     $routesOk = $false
     try {
@@ -187,8 +198,8 @@ function Health-Check {
             if ($route1 -and $route2) { $routesOk = $true }
         }
     } catch {}
-    if ($routesOk) { Write-Output "[PASS] VPN routes 0.0.0.0/1 and 128.0.0.0/1 present via TAP"; $passCount++ }
-    else { Write-Output "[FAIL] VPN routes not found in routing table"; $failCount++ }
+    if ($routesOk) { if ($JSON) { $checks += @{ name = "Routes"; status = "pass" } } else { Write-Output "[PASS] VPN routes 0.0.0.0/1 and 128.0.0.0/1 present via TAP" }; $passCount++ }
+    else { if ($JSON) { $checks += @{ name = "Routes"; status = "fail" } } else { Write-Output "[FAIL] VPN routes not found in routing table" }; $failCount++ }
 
     $lockOk = $true
     $existing = Get-LockPid
@@ -203,8 +214,8 @@ function Health-Check {
             $lockOk = $false
         }
     }
-    if ($lockOk) { Write-Output "[PASS] Lock file is valid"; $passCount++ }
-    else { Write-Output "[FAIL] Lock file is stale (PID $existing)"; $failCount++ }
+    if ($lockOk) { if ($JSON) { $checks += @{ name = "Lock file"; status = "pass" } } else { Write-Output "[PASS] Lock file is valid" }; $passCount++ }
+    else { if ($JSON) { $checks += @{ name = "Lock file"; status = "fail" } } else { Write-Output "[FAIL] Lock file is stale (PID $existing)" }; $failCount++ }
 
     $blockedSites = @(
         @{ Name = "krunker.io"; Url = "https://krunker.io" },
@@ -214,15 +225,31 @@ function Health-Check {
         try {
             $code = curl.exe -s -o nul -w "%{http_code}" --max-time 8 $s.Url 2>$null
             $code = "$code".Trim()
-            if ($code -eq "200") { Write-Output "[PASS] $($s.Name) returns 200 (accessible)"; $passCount++ }
-            elseif ($code -eq "403") { Write-Output "[WARN] $($s.Name) returns 403 (VPN IP blocked by site)"; $passCount++ }
-            elseif ($code -eq "000") { Write-Output "[WARN] $($s.Name) unreachable (connection failed)"; $failCount++ }
-            else { Write-Output "[WARN] $($s.Name) returns $code"; $failCount++ }
-        } catch { Write-Output "[WARN] $($s.Name) test failed"; $failCount++ }
+            if ($code -eq "200") {
+                if ($JSON) { $checks += @{ name = $s.Name; status = "pass"; code = 200 } } else { Write-Output "[PASS] $($s.Name) returns 200 (accessible)" }
+                $passCount++
+            } elseif ($code -eq "403") {
+                if ($JSON) { $checks += @{ name = $s.Name; status = "warn"; code = 403 } } else { Write-Output "[WARN] $($s.Name) returns 403 (VPN IP blocked by site)" }
+                $passCount++
+            } elseif ($code -eq "000") {
+                if ($JSON) { $checks += @{ name = $s.Name; status = "fail" } } else { Write-Output "[WARN] $($s.Name) unreachable (connection failed)" }
+                $failCount++
+            } else {
+                if ($JSON) { $checks += @{ name = $s.Name; status = "fail"; code = [int]$code } } else { Write-Output "[WARN] $($s.Name) returns $code" }
+                $failCount++
+            }
+        } catch {
+            if ($JSON) { $checks += @{ name = $s.Name; status = "fail" } } else { Write-Output "[WARN] $($s.Name) test failed" }
+            $failCount++
+        }
     }
 
-    Write-Output ""
-    Write-Output "Summary: $passCount passed, $failCount failed"
+    if ($JSON) {
+        Write-Output (@{ pass = $passCount; fail = $failCount; checks = $checks } | ConvertTo-Json -Depth 3)
+    } else {
+        Write-Output ""
+        Write-Output "Summary: $passCount passed, $failCount failed"
+    }
 }
 
 if ($Action -in "disconnect","down","off","stop") { Disconnect-VPN; return }

@@ -1,0 +1,20 @@
+name: Validate PowerShell Scripts
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate .ps1 syntax
+        run: |
+          failed=0
+          for f in $(find . -name '*.ps1' -not -path './.git/*'); do
+            echo "Checking $f..."
+            pwsh -NoProfile -Command "& { try { [System.Management.Automation.Language.Parser]::ParseInput((Get-Content -Raw '$f'), [ref]$null, [ref]$null) | Out-Null; Write-Output 'OK' } catch { Write-Error $_; exit 1 } }" || failed=1
+          done
+          if [ $failed -eq 1 ]; then echo "Some scripts failed validation."; exit 1; fi
+          echo "All .ps1 files valid."

@@ -255,4 +255,74 @@ The scheduled tasks are registered manually (or via a setup script) pointing to 
 | Not on college network | 0 MB | 0 |
 | On SSN/Ethernet, connected | ~14 MB | 1 (`openvpn.exe`) |
 | NordVPN desktop app equivalent | ~400 MB | ~5 (Electron, tray, service, etc.) |
-# Custom-Vpn
+## GUI Application
+
+A lightweight PowerShell WinForms GUI (`gui/nord-gui.ps1`) provides one-click management:
+
+```
+Launch:  gui\nord-gui.bat     (double-click)
+Manual:  powershell -File gui\nord-gui.ps1
+```
+
+Features:
+- Connect/Disconnect/Reconnect with one click
+- Server and protocol selection
+- Auto-connect monitor toggle
+- Full health check with results dialog
+- Settings for credentials and WiFi SSID
+- Live status updates every 30 seconds
+- System tray minimize (background operation)
+- Dark theme, ~550x500px, no dependencies
+
+## Installation
+
+### Quick Install (recommended)
+```powershell
+# Run as Administrator
+.\install.ps1 -NordUser "YOUR_USERNAME" -NordPass "YOUR_PASSWORD" -WifiSSID "CollegeWiFi"
+```
+
+### Interactive Install
+```powershell
+.\install.ps1
+```
+
+The installer will:
+1. Check OpenVPN installation
+2. Copy all files to %USERPROFILE%\.nordvpn\
+3. Set up credentials and WiFi SSID
+4. Disable IPv6 on network adapters
+5. Register all 5 scheduled tasks
+6. Install CLI wrapper (nord command from CMD)
+7. Run health verification
+
+### Manual Install
+See [docs/SETUP.md](docs/SETUP.md) for step-by-step manual setup.
+
+## File Structure
+```
+C:\Users\srik2\Desktop\Projects\Wi-Fi\
+├── README.md                   # This file
+├── state-proof.txt             # Live system state export
+├── install.ps1                 # One-command installer
+├── .gitignore                  # Git ignore rules
+├── .github/workflows/test.yml  # CI validation
+├── docs/                       # Documentation (8 files)
+├── scripts/                    # Core system scripts
+│   ├── nord.ps1                # Main management script
+│   ├── nord.cmd                # CLI wrapper
+│   ├── on-network-connect.cmd  # Ethernet connect trigger
+│   ├── on-network-disconnect.cmd
+│   ├── on-wifi-connect.cmd     # WiFi connect trigger (SSN)
+│   ├── on-wifi-disconnect.cmd
+│   ├── watchdog.cmd            # 5-min health check
+│   ├── Register-Tasks.ps1      # Task registration
+│   ├── Disable-IPv6.ps1        # IPv6 disable
+│   ├── Download-Configs.ps1    # Config downloader
+│   └── Fix-Permissions.ps1     # Diagnostics + repair
+├── gui/                        # GUI application
+│   ├── nord-gui.ps1            # WinForms GUI
+│   ├── nord-gui.bat            # Launcher
+│   ├── nord-backend.ps1        # JSON backend
+│   └── nord-version.ps1        # Version check
+```

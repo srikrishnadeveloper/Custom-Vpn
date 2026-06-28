@@ -1,0 +1,111 @@
+﻿=== NORDVPN AUTO-CONNECT STATE PROOF ===
+2026-06-28 17:20:23
+
+--- COMMAND 1: nord.ps1 status ---
+
+Connected (185.215.181.14)
+
+--- COMMAND 2: nord.ps1 health ---
+
+[PASS] OpenVPN process is running
+[PASS] Internet is reachable
+[PASS] DNS using NordVPN server 103.86.96.100
+[PASS] IPv6 disabled on Ethernet/WiFi adapters
+[PASS] VPN routes 0.0.0.0/1 and 128.0.0.0/1 present via TAP
+[PASS] Lock file is valid
+[WARN] krunker.io returns 403 (VPN IP blocked by site)
+[WARN] chatgpt.com returns 403 (VPN IP blocked by site)
+
+Summary: 8 passed, 0 failed
+
+--- COMMAND 3: schtasks NordVPN-Ethernet-Connect ---
+
+TaskName:                             \NordVPN-Ethernet-Connect
+Next Run Time:                        N/A
+Status:                               Ready
+TaskName:                             \NordVPN-Ethernet-Connect
+Next Run Time:                        N/A
+Status:                               Ready
+TaskName:                             \NordVPN-Ethernet-Connect
+Next Run Time:                        N/A
+Status:                               Ready
+
+--- COMMAND 4a: schtasks NordVPN-WiFi-Connect ---
+
+TaskName:                             \NordVPN-WiFi-Connect
+Next Run Time:                        N/A
+Status:                               Ready
+TaskName:                             \NordVPN-WiFi-Connect
+Next Run Time:                        N/A
+Status:                               Ready
+TaskName:                             \NordVPN-WiFi-Connect
+Next Run Time:                        N/A
+Status:                               Ready
+
+--- COMMAND 4b: schtasks NordVPN-Ethernet-Disconnect ---
+
+TaskName:                             \NordVPN-Ethernet-Disconnect
+Next Run Time:                        N/A
+Status:                               Ready
+
+--- COMMAND 4c: schtasks NordVPN-WiFi-Disconnect ---
+
+TaskName:                             \NordVPN-WiFi-Disconnect
+Next Run Time:                        N/A
+Status:                               Ready
+
+--- COMMAND 4d: schtasks NordVPN-Watchdog ---
+
+TaskName:                             \NordVPN-Watchdog
+Next Run Time:                        28-06-2026 17:25:00
+Status:                               Ready
+
+--- COMMAND 5: Get-Process openvpn ---
+
+
+  Id ProcessName WorkingSet64 StartTime          
+  -- ----------- ------------ ---------          
+4448 openvpn         15138816 28-06-2026 17:16:00
+
+
+
+
+--- COMMAND 6: Get-NetAdapter ---
+
+
+Name                 Status       InterfaceIndex
+----                 ------       --------------
+Ethernet             Up                       20
+WiFi                 Disconnected             13
+OpenVPN TAP-Windows6 Up                       36
+
+
+
+
+--- COMMAND 7: Get-NetRoute ---
+
+
+DestinationPrefix InterfaceAlias       NextHop    Metric
+----------------- --------------       -------    ------
+128.0.0.0/1       OpenVPN TAP-Windows6 10.100.0.1       
+0.0.0.0/1         OpenVPN TAP-Windows6 10.100.0.1       
+
+
+
+
+--- COMMAND 8: connect.log file size ---
+
+2516 bytes
+
+--- COMMAND 9: connect.log last 10 lines ---
+
+[28-06-2026 16:10:02.73] Triggered 
+[28-06-2026 16:10:26.09] Triggered 
+[28-06-2026 16:21:05.72] Triggered 
+[28-06-2026 16:34:34.94] Triggered 
+[28-06-2026 17:15:54.80] Triggered 
+[28-06-2026 17:15:57.82] Triggered 
+Disconnected
+NordVPN -> us ...
+Initialization Sequence Completed
+Connected (185.215.181.14)

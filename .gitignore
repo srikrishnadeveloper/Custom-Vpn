@@ -1,0 +1,9 @@
+﻿# Sensitive - do not commit
+auth.txt
+*.log
+.nord.lock
+.nord.last
+
+# OS files
+Thumbs.db
+.DS_Store
